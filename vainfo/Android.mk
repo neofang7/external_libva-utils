@@ -11,7 +11,7 @@ LOCAL_SRC_FILES := \
 	../common/va_display_android.cpp
 
 LOCAL_CFLAGS += \
-  -DANDROID
+  -DANDROID -Wno-unused-parameter
 
 LOCAL_C_INCLUDES += \
   $(LOCAL_PATH)/../common
