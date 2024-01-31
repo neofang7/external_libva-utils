@@ -16,9 +16,10 @@ LOCAL_C_INCLUDES += \
   $(LOCAL_PATH)/../common
 
 LOCAL_MODULE_TAGS := optional
+LOCAL_VENDOR_MODULE := true
 LOCAL_MODULE :=	h264encode
 
-LOCAL_SHARED_LIBRARIES := libva-android libva libdl  libcutils libutils libgui libm
+LOCAL_SHARED_LIBRARIES := libva-android libva libdl  libcutils libutils libgui_vendor libm
 
 include $(BUILD_EXECUTABLE)
 
@@ -38,9 +39,10 @@ LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/../common
 
 LOCAL_MODULE_TAGS := optional
+LOCAL_VENDOR_MODULE := true
 LOCAL_MODULE :=	avcenc
 
-LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils libgui
+LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils libgui_vendor
 
 include $(BUILD_EXECUTABLE)
 
@@ -60,9 +62,10 @@ LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/../common
 
 LOCAL_MODULE_TAGS := optional
+LOCAL_VENDOR_MODULE := true
 LOCAL_MODULE :=	vp9enc
 
-LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils libgui
+LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils libgui_vendor
 
 include $(BUILD_EXECUTABLE)
 
@@ -82,9 +85,10 @@ LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/../common
 
 LOCAL_MODULE_TAGS := optional
+LOCAL_VENDOR_MODULE := true
 LOCAL_MODULE :=	jpegenc
 
-LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils libgui
+LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils libgui_vendor
 
 include $(BUILD_EXECUTABLE)
 
@@ -104,9 +108,10 @@ LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/../common
 
 LOCAL_MODULE_TAGS := optional
+LOCAL_VENDOR_MODULE := true
 LOCAL_MODULE :=	mpeg2vaenc
 
-LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils libgui
+LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils libgui_vendor
 
 include $(BUILD_EXECUTABLE)
 
@@ -126,8 +131,9 @@ LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/../common
 
 LOCAL_MODULE_TAGS := optional
+LOCAL_VENDOR_MODULE := true
 LOCAL_MODULE :=	svctenc
 
-LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils libgui
+LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils libgui_vendor
 
 include $(BUILD_EXECUTABLE)

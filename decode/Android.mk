@@ -16,9 +16,10 @@ LOCAL_C_INCLUDES += \
   $(LOCAL_PATH)/../common
 
 LOCAL_MODULE_TAGS := optional
+LOCAL_VENDOR_MODULE := true
 LOCAL_MODULE :=	mpeg2vldemo
 
-LOCAL_SHARED_LIBRARIES := libva libva-android libdl libcutils libutils libgui
+LOCAL_SHARED_LIBRARIES := libva libva-android libdl libcutils libutils libgui_vendor
 
 include $(BUILD_EXECUTABLE)
 
@@ -39,8 +40,9 @@ LOCAL_C_INCLUDES += \
   $(LOCAL_PATH)/../common
 
 LOCAL_MODULE_TAGS := optional
+LOCAL_VENDOR_MODULE := true
 LOCAL_MODULE :=	loadjpeg
 
-LOCAL_SHARED_LIBRARIES := libva libva-android libdl libcutils libutils libgui
+LOCAL_SHARED_LIBRARIES := libva libva-android libdl libcutils libutils libgui_vendor
 
 include $(BUILD_EXECUTABLE)
