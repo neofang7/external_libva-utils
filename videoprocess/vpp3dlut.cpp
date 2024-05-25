@@ -1185,7 +1185,6 @@ video_frame_process_scaling(VASurfaceID in_surface_id,
     VAProcPipelineParameterBuffer pipeline_param;
     VARectangle surface_region, output_region;
     VABufferID pipeline_param_buf_id = VA_INVALID_ID;
-    VABufferID filter_param_buf_id = VA_INVALID_ID;
 
     /* Fill pipeline buffer */
     surface_region.x = 0;
@@ -1234,10 +1233,6 @@ video_frame_process_scaling(VASurfaceID in_surface_id,
 
     if (pipeline_param_buf_id != VA_INVALID_ID) {
         vaDestroyBuffer(va_dpy, pipeline_param_buf_id);
-    }
-
-    if (filter_param_buf_id != VA_INVALID_ID) {
-        vaDestroyBuffer(va_dpy, filter_param_buf_id);
     }
 
     return va_status;
