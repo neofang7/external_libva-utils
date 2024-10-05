@@ -35,10 +35,10 @@
         exit(1);                                                \
     }
     
-#define CHECK_CONDITION(cod)                                    \
-    if(!(cod))                                                      \
+#define CHECK_CONDITION(cond)                                    \
+    if(!(cond))                                                      \
     {                                                           \
-        fprintf(stderr, "Unexpected condition:%s:%d\n", __func__, __LINE__); \
+        fprintf(stderr, "Unexpected condition: %s:%d\n", __func__, __LINE__); \
         exit(1);                                                \
     }
 
@@ -54,8 +54,6 @@
  * 
  * 
  * */
-
-
 #define BITSTREAM_ALLOCATE_STEPPING 1024 // in byte
 
 struct __bitstream {
@@ -64,7 +62,6 @@ struct __bitstream {
     int max_size_in_byte;
 };
 typedef struct __bitstream bitstream;
-
 
 static void
 bitstream_start(bitstream *bs)
@@ -152,7 +149,6 @@ bitstream_cat(bitstream *bs1, bitstream *bs2)
  * 
  * 
  * */
-
 #define PRIMARY_REF_BITS              3
 #define PRIMARY_REF_NONE              7
 
@@ -171,7 +167,6 @@ bitstream_cat(bitstream *bs1, bitstream *bs2)
 #define MAX_NUM_OPERATING_POINTS      32
 
 #define SURFACE_NUM 16 /* 16 surfaces for source YUV */
-
 
 enum {
     SINGLE_REFERENCE      = 0,
@@ -234,7 +229,6 @@ struct TileInfoAv1
     uint32_t context_update_tile_id;
     uint32_t TileSizeBytes;
 };
-
 
 struct QuantizationParams
 {
@@ -318,7 +312,6 @@ struct ColorConfig
 
 typedef struct FrameHeader
 {
-
     uint32_t show_existing_frame;
     uint32_t frame_to_show_map_idx;
     uint64_t frame_presentation_time;
@@ -481,10 +474,9 @@ struct Av1InputParameters
     uint32_t base_qindex;
     int bit_depth;
     int target_bitrate;
-    int max_bitrate;
+    int vbr_max_bitrate;
     int buffer_size;
     int initial_buffer_fullness;
-
 };
 
 
@@ -511,6 +503,8 @@ static  FH fh;
 static  SH sh;
 struct BitOffsets offsets;
 
+//Default entrypoint for Encode
+static VAEntrypoint requested_entrypoint = -1;
 
 static  unsigned long long current_frame_encoding = 0;
 static  unsigned long long current_frame_display = 0;
@@ -523,6 +517,7 @@ struct storage_task_t {
     unsigned long long display_order;
     unsigned long long encode_order;
 };
+
 static  struct storage_task_t *storage_task_header = NULL, *storage_task_tail = NULL;
 #define SRC_SURFACE_IN_ENCODING 0
 #define SRC_SURFACE_IN_STORAGE  1
@@ -532,7 +527,6 @@ static  pthread_mutex_t encode_mutex = PTHREAD_MUTEX_INITIALIZER;
 static  pthread_cond_t  encode_cond = PTHREAD_COND_INITIALIZER;
 static  pthread_t encode_thread;
 
-static  char *coded_fn = NULL;
 static  FILE *coded_fp = NULL, *srcyuv_fp = NULL, *recyuv_fp = NULL;
 static  unsigned long long srcyuv_frames = 0;
 static  int srcyuv_fourcc = VA_FOURCC_IYUV;
@@ -563,7 +557,6 @@ static int len_ivf_header;
 static int len_seq_header;
 static int len_pic_header;
 
-
 /*
  * Helper function for profiling purposes
  */
@@ -573,22 +566,6 @@ static unsigned int GetTickCount()
     if (gettimeofday(&tv, NULL))
         return 0;
     return tv.tv_usec / 1000 + tv.tv_sec * 1000;
-}
-
-static char *fourcc_to_string(int fourcc)
-{
-    switch (fourcc) {
-    case VA_FOURCC_NV12:
-        return "NV12";
-    case VA_FOURCC_IYUV:
-        return "IYUV";
-    case VA_FOURCC_YV12:
-        return "YV12";
-    case VA_FOURCC_UYVY:
-        return "UYVY";
-    default:
-        return "Unknown";
-    }
 }
 
 static int string_to_fourcc(char *str)
@@ -637,9 +614,6 @@ static int string_to_rc(char *str)
 
 static void print_help()
 {
-
-    //./av1encode -n 8 -f 30 --intra_period 4 --ip_period 1 --rcmode CQP --srcyuv ./input.yuv --recyuv ./rec.yuv --fourcc IYUV --level 8  --height 1080 --width 1920 --base_q_idx 128 -o ./out.av1 -t 3360000  -u 210 -d 420 --LDB
-
     printf("./av1encode <options>\n");
     printf("   -n <frames> -f <frame rate> -o <output>\n");
     printf("   --intra_period <number>\n");
@@ -653,16 +627,18 @@ static void print_help()
     printf("   --height <number>\n");
     printf("   --width <number>\n");
     printf("   --base_q_idx <number> 1-255\n");
+    printf("   --normal_mode select VAEntrypointEncSlice as entrypoint\n");
+    printf("   --low_power_mode select VAEntrypointEncSliceLP as entrypoint\n");
 
-    printf(" sample usage");
-    printf("./av1encode -n 8 -f 30 --intra_period 4 --ip_period 1 --rcmode CQP --srcyuv ./input.yuv --recyuv ./rec.yuv --fourcc IYUV --level 8  --height 1080 --width 1920 --base_q_idx 128 -o ./out.av1 -t 3360000  -u 210 -d 420 --LDB");
-
+    printf(" sample usage:\n");
+    printf("./av1encode -n 8 -f 30 --intra_period 4 --ip_period 1 --rcmode CQP --srcyuv ./input.yuv --recyuv ./rec.yuv --fourcc IYUV --level 8 --width 1920 --height 1080 --base_q_idx 128  -o ./out.av1 --LDB --low_power_mode\n"
+           "./av1encode -n 8 -f 30 --intra_period 4 --ip_period 1 --rcmode CBR --srcyuv ./input.yuv --recyuv ./rec.yuv --fourcc IYUV --level 8 --width 1920 --height 1080 --target_bitrate 3360000 -o ./out.av1 --LDB --low_power_mode\n"
+           "./av1encode -n 8 -f 30 --intra_period 4 --ip_period 1 --rcmode VBR --srcyuv ./input.yuv --recyuv ./rec.yuv --fourcc IYUV --level 8 --width 1920 --height 1080 --vbr_max_bitrate 3360000 -o ./out.av1 --LDB --low_power_mode\n");
 
 }
 
 static void process_cmdline(int argc, char *argv[])
 {
-
     int c;
     const struct option long_opts[] = {
         {"help",            no_argument,        NULL, 0 },
@@ -679,12 +655,15 @@ static void process_cmdline(int argc, char *argv[])
         {"width",           required_argument,  NULL, 11 },
         {"base_q_idx",      required_argument,  NULL, 12},
         {"LDB",             no_argument,        NULL, 13},
+        {"normal_mode",     no_argument,        NULL, 14},
+        {"low_power_mode",  no_argument,        NULL, 15},
+        {"target_bitrate",  required_argument,  NULL, 16},
+        {"vbr_max_bitrate", required_argument,  NULL, 17},
         {NULL,              no_argument,        NULL, 0 }
-
     };
-    int long_index;
 
-    while ((c = getopt_long_only(argc, argv, "n:f:o:t:m:u:d:?", long_opts, &long_index)) != EOF) 
+    int long_index;
+    while ((c = getopt_long_only(argc, argv, "n:f:o:t:m:u:d:?", long_opts, &long_index)) != EOF)
     {
         switch (c) 
         {
@@ -739,11 +718,19 @@ static void process_cmdline(int argc, char *argv[])
             case 13:
                 ips.LDB = 1;
                 break;
+            case 14:
+                requested_entrypoint = VAEntrypointEncSlice;
+                break;
+            case 15:
+                requested_entrypoint = VAEntrypointEncSliceLP;
+                break;
             case 't':
+            case 16:
                 ips.target_bitrate = atoi(optarg);
                 break;
             case 'm':
-                ips.max_bitrate = atoi(optarg);
+            case 17:
+                ips.vbr_max_bitrate = atoi(optarg);
                 break;
             case 'u':
                 ips.buffer_size = atoi(optarg) * 8000;
@@ -764,14 +751,31 @@ static void process_cmdline(int argc, char *argv[])
     ips.MinBaseQIndex = 1;
     ips.bit_depth = 8;
 
-    if(ips.RateControlMethod == VA_RC_CBR) ips.max_bitrate = ips.target_bitrate; //set max = target in CBR case
-
-    if(ips.RateControlMethod == VA_RC_VBR) //VBR
+    if (ips.frame_rate_extD == 0)
     {
-        if(ips.max_bitrate == 0)
+        ips.frame_rate_extN = 3000;
+        ips.frame_rate_extD = 100;
+    }
+
+    int default_bitrate = (long long int) ips.height * ips.width * 12 * ips.frame_rate_extN / ips.frame_rate_extD / 50;
+    // For CBR, target bitrate should be set
+    if(ips.RateControlMethod == VA_RC_CBR)
+    {
+        if (ips.target_bitrate == 0)
         {
-            printf("max bitrate is not provided in VBR mode\n");
-            exit(0);
+            ips.target_bitrate = default_bitrate;
+        }
+    }
+    // For VBR, max bitrate should be set
+    else if (ips.RateControlMethod == VA_RC_VBR)
+    {
+        if (ips.target_bitrate == 0 && ips.vbr_max_bitrate == 0)
+        {
+            ips.vbr_max_bitrate = default_bitrate;
+        }
+        else if (ips.vbr_max_bitrate == 0)
+        {
+            ips.vbr_max_bitrate = ips.target_bitrate;
         }
     }
 
@@ -785,7 +789,8 @@ static void process_cmdline(int argc, char *argv[])
         else {
             struct stat tmp;
 
-            fstat(fileno(srcyuv_fp), &tmp);
+            int ret = fstat(fileno(srcyuv_fp), &tmp);
+            CHECK_CONDITION(ret == 0);
             srcyuv_frames = tmp.st_size / (ips.width * ips.height * 1.5);
             printf("Source YUV file %s with %llu frames\n", ips.srcyuv, srcyuv_frames);
 
@@ -861,11 +866,9 @@ static int print_input()
     printf("frame width: %d \n", ips.width);
     printf("base_q_index: %d \n", ips.base_qindex);
     printf("target_bitrate: %d bps\n", ips.target_bitrate);
-    printf("max_bitrate: %d bps\n", ips.max_bitrate);
+    printf("vbr_max_bitrate: %d bps\n", ips.vbr_max_bitrate);
     return 0;
 }
-
-
 
 static int init_va(void)
 {
@@ -875,7 +878,43 @@ static int init_va(void)
     va_status = vaInitialize(va_dpy, &major_ver, &minor_ver);
     CHECK_VASTATUS(va_status, "vaInitialize");
     av1_profile = VAProfileAV1Profile0;
-    entryPoint = VAEntrypointEncSliceLP;
+
+    // select entrypoint
+
+    int num_entrypoints = vaMaxNumEntrypoints(va_dpy);
+    VAEntrypoint* entrypoints = malloc(num_entrypoints * sizeof(*entrypoints));
+    if (!entrypoints) {
+        fprintf(stderr, "error: failed to initialize VA entrypoints array\n");
+        exit(1);
+    }
+
+    vaQueryConfigEntrypoints(va_dpy, av1_profile, entrypoints, &num_entrypoints);
+    int support_encode = 0;
+    for (int slice_entrypoint = 0; slice_entrypoint < num_entrypoints; slice_entrypoint++) 
+    {
+        if (requested_entrypoint == -1) {
+            //Select the entry point based on what is avaiable
+            if ((entrypoints[slice_entrypoint] == VAEntrypointEncSlice) ||
+                (entrypoints[slice_entrypoint] == VAEntrypointEncSliceLP)) {
+                support_encode = 1;
+                entryPoint = entrypoints[slice_entrypoint];
+                break;
+            }
+        } else if ((entrypoints[slice_entrypoint] == requested_entrypoint)) {
+            //Select the entry point based on what was requested in cmd line option
+            support_encode = 1;
+            entryPoint = entrypoints[slice_entrypoint];
+            break;
+        }
+    }
+
+    if(entrypoints)
+        free(entrypoints);
+
+    if (support_encode == 0) {
+        printf("Can't find avaiable or requested entrypoints for AV1 profiles\n");
+        exit(1);
+    }
 
     unsigned int i;
     for (i = 0; i < VAConfigAttribTypeMax; i++)
@@ -1047,7 +1086,6 @@ static int setup_encode()
     return 0;
 }
 
-
 static int release_encode()
 {
     int i;
@@ -1072,7 +1110,6 @@ static int deinit_va()
 
     return 0;
 }
-
 
 /*
  * Return displaying order with specified periods and encoding order
@@ -1114,7 +1151,6 @@ fill_sps_header()
 static void
 fill_pps_header(uint64_t displaying_order)
 {
-
     fh.show_existing_frame = 0;
     fh.frame_to_show_map_idx = 0;
     fh.frame_presentation_time = 0;
@@ -1226,9 +1262,7 @@ fill_pps_header(uint64_t displaying_order)
     fh.skipModeFrame[1] = 0;
     fh.allow_warped_motion = 0;
     fh.reduced_tx_set = 1;
-
 }
-
 
 // brief interface with va, render bitstream
 static void
@@ -1277,7 +1311,6 @@ va_render_packed_data(bitstream* bs)
         vaDestroyBuffer(va_dpy, packed_data_bufid);
         packed_data_bufid = VA_INVALID_ID;
     }
-
 }
 
 static void
@@ -1339,7 +1372,6 @@ render_TD()
     bitstream_free(&bs);
 }
 
-
 static void
 build_sps_buffer(VAEncSequenceParameterBufferAV1* sps)
 {
@@ -1351,7 +1383,14 @@ build_sps_buffer(VAEncSequenceParameterBufferAV1* sps)
     sps->intra_period = ips.intra_period;
     sps->ip_period    = ips.ip_period;
 
-    sps->bits_per_second = ips.target_bitrate;;
+    if (ips.RateControlMethod == VA_RC_CBR)
+    {
+        sps->bits_per_second = ips.target_bitrate;
+    }
+    else if (ips.RateControlMethod == VA_RC_VBR)
+    {
+        sps->bits_per_second = ips.vbr_max_bitrate;
+    }
 
     sps->order_hint_bits_minus_1 = (uint8_t)(sh.order_hint_bits_minus1);
 
@@ -1371,9 +1410,7 @@ build_sps_buffer(VAEncSequenceParameterBufferAV1* sps)
     sps->seq_fields.bits.bit_depth_minus8           = ips.bit_depth - 8;
     sps->seq_fields.bits.subsampling_x              = 0;
     sps->seq_fields.bits.subsampling_y              = 0;
-
 }
-
 
 static void
 render_sequence()
@@ -1396,7 +1433,6 @@ render_sequence()
         vaDestroyBuffer(va_dpy, seq_param_buf_id);
         seq_param_buf_id = VA_INVALID_ID;
     }
-
 }
 
 static void
@@ -1419,8 +1455,19 @@ render_rc_buffer()
     misc_param->type = VAEncMiscParameterTypeRateControl;
     misc_rate_ctrl = (VAEncMiscParameterRateControl *)misc_param->data;
     memset(misc_rate_ctrl, 0, sizeof(*misc_rate_ctrl));
-    misc_rate_ctrl->bits_per_second = ips.max_bitrate;
-    misc_rate_ctrl->target_percentage = (int)(100.0 * (double)ips.target_bitrate / (double)ips.max_bitrate);
+    if (ips.RateControlMethod == VA_RC_CBR)
+    {
+        misc_rate_ctrl->bits_per_second = ips.target_bitrate;
+    }
+    else if (ips.RateControlMethod == VA_RC_VBR)
+    {
+        misc_rate_ctrl->bits_per_second = ips.vbr_max_bitrate;
+        if (ips.target_bitrate != 0)
+        {
+            misc_rate_ctrl->target_percentage = MIN(100, (uint32_t) (100.0 * ips.target_bitrate / ips.vbr_max_bitrate));
+        }
+    }
+
     vaUnmapBuffer(va_dpy, rc_param_buf);
 
     render_id = rc_param_buf;
@@ -1434,7 +1481,6 @@ render_rc_buffer()
         rc_param_buf = VA_INVALID_ID;
     }
 }
-
 
 static void
 render_hrd_buffer()
@@ -1473,7 +1519,6 @@ render_hrd_buffer()
         param_buf = VA_INVALID_ID;
     }
 }
-
 
 static void
 render_fr_buffer()
@@ -1516,11 +1561,12 @@ static void
 render_misc_buffer()
 {
     render_rc_buffer();
-    render_hrd_buffer();
+    if (ips.buffer_size != 0 || ips.initial_buffer_fullness != 0)
+    {
+        render_hrd_buffer();
+    }
     render_fr_buffer();
 }
-
-
 
 static void
 render_tile_group()
@@ -1541,9 +1587,7 @@ render_tile_group()
         vaDestroyBuffer(va_dpy, tile_param_buf_id);
         tile_param_buf_id = VA_INVALID_ID;
     }
-
 }
-
 
 static void
 pack_obu_header(bitstream *bs, int obu_type, uint32_t obu_extension_flag)
@@ -1559,8 +1603,6 @@ pack_obu_header(bitstream *bs, int obu_type, uint32_t obu_extension_flag)
         // not written to bitstream by default
     }
 }
-
-
 
 static void
 pack_obu_header_size(bitstream *bs, 
@@ -1635,7 +1677,6 @@ pack_frame_size_info(bitstream* bs)
     put_ui(bs, fh.FrameHeight - 1, 16);//max_frame_height_minus_1
     // end of pack frame size info
 }
-
 
 static void
 pack_seq_data(bitstream *bs)
@@ -1755,7 +1796,6 @@ pack_show_existing_frame(bitstream* bs)
     return; //only for B frame, not enable by default
 }
 
-
 static void
 pack_show_frame(bitstream* bs)
 {
@@ -1771,14 +1811,10 @@ pack_error_resilient(bitstream* bs)
         put_ui(bs, 0, 1); //error_resilient_mode
 }
 
-
 static void
 pack_ref_frame_flags(bitstream* bs, uint8_t error_resilient_mode, uint8_t isI)
 {
-    uint8_t primary_ref_frame = PRIMARY_REF_NONE;
-    if(isI || error_resilient_mode) 
-        primary_ref_frame = PRIMARY_REF_NONE;
-    else
+    if(!(isI || error_resilient_mode))
         put_ui(bs, 0, 3); //primary_ref_frame
     if (!(fh.frame_type == SWITCH_FRAME || (fh.frame_type == KEY_FRAME && fh.show_frame)))
         put_ui(bs, fh.refresh_frame_flags, NUM_REF_FRAMES);
@@ -1801,14 +1837,7 @@ pack_render_size(bitstream* bs)
     uint32_t render_and_frame_size_different = 0;
 
     put_ui(bs, render_and_frame_size_different, 1);//render_and_frame_size_different
-
-    if (render_and_frame_size_different == 1)
-    {
-        put_ui(bs, fh.RenderWidth - 1, 16);//render_width_minus_1
-        put_ui(bs, fh.RenderHeight - 1, 16);//render_height_minus_1
-    }
 }
-
 
 static void
 pack_frame_size(bitstream *bs)
@@ -1820,7 +1849,6 @@ pack_frame_size(bitstream *bs)
     }
 
 }
-
 
 static void
 pack_frame_size_with_refs(bitstream* bs)
@@ -1867,10 +1895,6 @@ pack_frame_ref_info(bitstream* bs, uint8_t error_resilient_mode)
     if (fh.use_ref_frame_mvs)
         put_ui(bs, 1, 1); //use_ref_frame_mvs
 }
-
-
-
-
 
 static void
 pack_tile_info(bitstream* bs)
@@ -1938,7 +1962,6 @@ pack_quantization_params(bitstream* bs)
     }
 }
 
-
 static void
 pack_loop_filter_params(bitstream* bs)
 {
@@ -1984,7 +2007,6 @@ pack_cdef_params(bitstream* bs)
     }
 }
 
-
 static void
 pack_lr_params(bitstream* bs)
 {
@@ -2022,7 +2044,6 @@ pack_lr_params(bitstream* bs)
         }
     }
 }
-
 
 static void
 pack_delta_q_params(bitstream* bs)
@@ -2108,17 +2129,14 @@ pack_frame_header(bitstream* bs)
             put_ui(bs, fh.allow_intrabc, 1);
     }
 
-
     if (!fh.disable_cdf_update)
         put_ui(bs, fh.disable_frame_end_update_cdf, 1); //disable_frame_end_update_cdf
 
     pack_tile_info(bs);
 
-
     //quantization_params
     offsets.QIndexBitOffset = bs->bit_offset;
     pack_quantization_params(bs);
-
 
     //segmentation_params
     offsets.SegmentationBitOffset = bs->bit_offset;
@@ -2167,7 +2185,6 @@ build_packed_pic_header(bitstream* bs)
     else
         pack_frame_header(&tmp);
 
-
     offsets.FrameHdrOBUSizeInBits = tmp.bit_offset;
 
     const uint32_t obu_extension_flag = sh.operating_points_cnt_minus_1 ? 1 : 0;
@@ -2182,7 +2199,6 @@ build_packed_pic_header(bitstream* bs)
     const uint32_t obu_size_in_bytes = (tmp.bit_offset + 7) / 8;
     pack_obu_header_size(bs, obu_size_in_bytes, fh.show_existing_frame? 0: 4);
 
-
     if (!fh.show_existing_frame)
     {
         // The offset is related to frame or frame header OBU. IVF, sequence, and other headers should not be counted.
@@ -2194,7 +2210,6 @@ build_packed_pic_header(bitstream* bs)
         //offsets.CDEFParamsSizeInBits is not needed to be updated.
         offsets.FrameHdrOBUSizeInBits     += obuPayloadOffset;
     }
-
 
     bitstream_cat(bs, &tmp);
 }
@@ -2229,7 +2244,6 @@ fill_ref_params(VAEncPictureParameterBufferAV1* pps)
         // for Low delay B
         pps->ref_frame_ctrl_l1.fields.search_idx0 = ips.LDB ? BWDREF_FRAME : INTRA_FRAME;
     }
-
 }
 
 static void
@@ -2308,8 +2322,6 @@ build_pps_buffer(VAEncPictureParameterBufferAV1* pps)
     for(int k = 0;k < 8;k++)
         pps->ref_deltas[k] = 0;
 
-
-
     //block-level deltas
     pps->mode_control_flags.bits.delta_q_present  = fh.delta_q_present;
     pps->mode_control_flags.bits.delta_q_res  = fh.delta_q_res;
@@ -2387,7 +2399,6 @@ build_pps_buffer(VAEncPictureParameterBufferAV1* pps)
     pps->skip_frames_reduced_size = 0;
 }
 
-
 static void
 render_picture()
 {
@@ -2409,7 +2420,6 @@ render_picture()
         vaDestroyBuffer(va_dpy, pic_param_buf_id);
         pic_param_buf_id = VA_INVALID_ID;
     }
-
 }
 
 static int upload_source_YUV_once_for_all()
@@ -2504,6 +2514,7 @@ static int save_codeddata(unsigned long long display_order, unsigned long long e
 {
     VACodedBufferSegment *buf_list = NULL;
     VAStatus va_status;
+    int ret;
     unsigned int coded_size = 0;
 
     va_status = vaMapBuffer(va_dpy, coded_buf[display_order % SURFACE_NUM], (void **)(&buf_list));
@@ -2521,25 +2532,29 @@ static int save_codeddata(unsigned long long display_order, unsigned long long e
     long frame_end = ftell(coded_fp);
     vaUnmapBuffer(va_dpy, coded_buf[display_order % SURFACE_NUM]);
 
+    CHECK_CONDITION(frame_start >= 0 && frame_end >= 0);
     if(encode_order == 0)
     {
         //first frame
         unsigned int ivf_size = coded_size - 32 - 12;
-        fseek(coded_fp, frame_start + 32, SEEK_SET);
+        ret = fseek(coded_fp, frame_start + 32, SEEK_SET);
+        CHECK_CONDITION(ret == 0);
         fwrite(&ivf_size, 4, 1, coded_fp);
         fwrite(&display_order, 8, 1, coded_fp);
-        fseek(coded_fp, frame_end, SEEK_SET);
+        ret = fseek(coded_fp, frame_end, SEEK_SET);
+        CHECK_CONDITION(ret == 0);
     }
     else
     {
         //other frames
         unsigned int ivf_size = coded_size - 12;
-        fseek(coded_fp, frame_start, SEEK_SET);
+        ret = fseek(coded_fp, frame_start, SEEK_SET);
+        CHECK_CONDITION(ret == 0);
         fwrite(&ivf_size, 4, 1, coded_fp);
         fwrite(&display_order, 8, 1, coded_fp);
-        fseek(coded_fp, frame_end, SEEK_SET);
+        ret = fseek(coded_fp, frame_end, SEEK_SET);
+        CHECK_CONDITION(ret == 0);
     }
-    
 
     printf("\n      "); /* return back to startpoint */
     switch (encode_order % 4) {
@@ -2683,7 +2698,6 @@ static void storage_task(unsigned long long display_order, unsigned long long en
     pthread_mutex_unlock(&encode_mutex);
 }
 
-
 static void * storage_task_thread(void *t)
 {
     while (1) {
@@ -2777,15 +2791,12 @@ static int encode_frames(void)
         CHECK_VASTATUS(va_status, "vaBeginPicture");
         BeginPictureTicks += GetTickCount() - tmp;
 
-        
-
         tmp = GetTickCount(); //start of render process
 
         // prepare parameters used for sequence and frame
         fill_sps_header();
         fill_pps_header(current_frame_display);
-        
-        
+
         // init length of packed headers
         len_ivf_header = 0;
         len_seq_header = 0;
@@ -2814,14 +2825,14 @@ static int encode_frames(void)
         {
             len_seq_header = 0;
         }
-        
+
         if((ips.RateControlMethod == 2 || ips.RateControlMethod == 4) && current_frame_encoding == 0)
         {
             // misc buffer are not need in CQP case
             // only needed in first frame
             render_misc_buffer();
         }
-        
+
 
         render_packedpicture(); //render packed frame header 
         render_picture(); //render frame PPS buffer
@@ -2848,7 +2859,6 @@ static int encode_frames(void)
     return 0;
 }
 
-
 static int calc_PSNR(double *psnr)
 {
     char *srcyuv_ptr = NULL, *recyuv_ptr = NULL, tmp;
@@ -2870,6 +2880,10 @@ static int calc_PSNR(double *psnr)
             srcyuv_ptr = mmap(0, fourM, PROT_READ, MAP_SHARED, fileno(srcyuv_fp), i);
             recyuv_ptr = mmap(0, fourM, PROT_READ, MAP_SHARED, fileno(recyuv_fp), i);
             if ((srcyuv_ptr == MAP_FAILED) || (recyuv_ptr == MAP_FAILED)) {
+                if (srcyuv_ptr != MAP_FAILED) 
+                    munmap(srcyuv_ptr, fourM);
+                if (recyuv_ptr != MAP_FAILED) 
+                    munmap(recyuv_ptr, fourM);
                 printf("Failed to mmap YUV files\n");
                 return 1;
             }
@@ -2936,7 +2950,6 @@ static int print_performance(unsigned int PictureCount)
 
     return 0;
 }
-
 
 int main(int argc, char **argv)
 {
