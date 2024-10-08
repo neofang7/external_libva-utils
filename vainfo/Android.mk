@@ -19,7 +19,8 @@ LOCAL_C_INCLUDES += \
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := vainfo
 
-LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils libgui
+LOCAL_PROPRIETARY_MODULE := true
+LOCAL_SHARED_LIBRARIES := libva-android libva libdl libcutils libutils
 
 include $(BUILD_EXECUTABLE)
 
